@@ -8,7 +8,7 @@ public class HomeController {
 
     @GetMapping("/")
     public String index(Model model) {
-        model.addAttribute("message", "Xin chào từ Spring Boot + Thymeleaf!");
+        model.addAttribute("message", "Xin chào");
         return "index"; // trả về file templates/index.html
     }
 }
