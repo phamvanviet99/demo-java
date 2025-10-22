@@ -1,11 +1,14 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <title>Demo Spring Boot View</title>
+    <title>Xử lý file</title>
 </head>
 <body>
-<h1 th:text="${message}"></h1>
-<p>Tôi là Việt</p>
+<h2>Upload và xử lý file</h2>
+<form id="uploadForm" method="post" enctype="multipart/form-data" action="/process">
+    <input type="file" name="file" accept=".xlsx,.csv,.txt" required />
+    <button type="submit">Tải lên & xử lý</button>
+</form>
 </body>
 </html>
