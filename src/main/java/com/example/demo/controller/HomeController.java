@@ -56,6 +56,7 @@ public class HomeController {
         try {
             outputDir = Paths.get("/tmp/task2-" + System.currentTimeMillis());
             Files.createDirectories(outputDir);
+
             generateReports(file, outputDir);
             final Path finalOutputDir = outputDir;
 
@@ -106,16 +107,7 @@ public class HomeController {
         Path tempFile = Files.createTempFile("summary-upload-", ".xlsx");
         file.transferTo(tempFile.toFile());
 
-        // 🔹 Kiểm tra template có tồn tại local hay trong resources
-        boolean useClasspathTemplate = false;
-        File templateFile = new File("./templates/Template2.xlsx");
-        if (!templateFile.exists()) {
-            useClasspathTemplate = true;
-            System.out.println("📦 Template không có ở local, dùng file trong resources.");
-        } else {
-            System.out.println("📁 Template local: " + templateFile.getAbsolutePath());
-        }
-
+        // 🔹 Mở file Excel người dùng upload
         try (FileInputStream fis = new FileInputStream(tempFile.toFile());
              Workbook summaryWb = new XSSFWorkbook(fis)) {
 
@@ -150,99 +142,105 @@ public class HomeController {
                 String storeName = cell.toString().trim();
                 System.out.println("🏪 Exporting store: " + storeName);
 
-                // ⚙️ 👉 Mỗi lần lặp: mở lại InputStream mới cho template
-                try (InputStream templateStream = useClasspathTemplate
-                        ? new org.springframework.core.io.ClassPathResource("templates/Template2.xlsx").getInputStream()
-                        : new FileInputStream(templateFile);
-                     Workbook templateWb = new XSSFWorkbook(templateStream)) {
+                // ⚙️ 👉 Luôn đọc template từ resources (tương thích Railway)
+                try (InputStream templateStream = getClass().getResourceAsStream("/templates/Template2.xlsx")) {
+                    if (templateStream == null) {
+                        throw new FileNotFoundException("Không tìm thấy Template2.xlsx trong resources/templates/");
+                    }
 
-                    Sheet templateSheet = templateWb.getSheetAt(0);
+                    try (Workbook templateWb = new XSSFWorkbook(templateStream)) {
+                        Sheet templateSheet = templateWb.getSheetAt(0);
 
-                    // 🔸 Ghi D3 (ngày cuối tháng trước)
-                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-                    String formattedDate = lastDateOfPrevMonth.format(formatter);
-                    Row rowB3 = templateSheet.getRow(2);
-                    if (rowB3 == null) rowB3 = templateSheet.createRow(2);
-                    Cell cellB3 = rowB3.getCell(3);
-                    if (cellB3 == null) cellB3 = rowB3.createCell(3);
-                    cellB3.setCellValue(formattedDate);
+                        // 🔸 Ghi D3 (ngày cuối tháng trước)
+                        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+                        String formattedDate = lastDateOfPrevMonth.format(formatter);
+                        Row rowB3 = templateSheet.getRow(2);
+                        if (rowB3 == null) rowB3 = templateSheet.createRow(2);
+                        Cell cellB3 = rowB3.getCell(3);
+                        if (cellB3 == null) cellB3 = rowB3.createCell(3);
+                        cellB3.setCellValue(formattedDate);
 
-                    // 🔸 Copy dữ liệu
-                    for (int r = startRow; r <= endRow; r++) {
-                        Row srcRow = summarySheet.getRow(r);
-                        Row destRow = templateSheet.getRow(r - startRow + 5);
-                        if (destRow == null) destRow = templateSheet.createRow(r - startRow + 5);
+                        // 🔸 Copy dữ liệu
+                        for (int r = startRow; r <= endRow; r++) {
+                            Row srcRow = summarySheet.getRow(r);
+                            if (srcRow == null) continue;
 
-                        double sum = 0;
-                        for (int c = 0; c < blockWidth; c++) {
-                            dem++;
-                            Cell srcCell = srcRow.getCell(col + c);
-                            Cell destCell = destRow.getCell(c + 4);
-                            if (destCell == null) destCell = destRow.createCell(c + 4);
+                            Row destRow = templateSheet.getRow(r - startRow + 5);
+                            if (destRow == null) destRow = templateSheet.createRow(r - startRow + 5);
 
-                            if (srcCell != null) {
-                                copyCellValue(srcCell, destCell);
-                                if (srcCell.getCellType() == CellType.NUMERIC && dem <= lastMonth1) {
-                                    sum += srcCell.getNumericCellValue();
+                            double sum = 0;
+                            for (int c = 0; c < blockWidth; c++) {
+                                dem++;
+                                Cell srcCell = srcRow.getCell(col + c);
+                                Cell destCell = destRow.getCell(c + 4);
+                                if (destCell == null) destCell = destRow.createCell(c + 4);
+
+                                if (srcCell != null) {
+                                    copyCellValue(srcCell, destCell);
+                                    if (srcCell.getCellType() == CellType.NUMERIC && dem <= lastMonth1) {
+                                        sum += srcCell.getNumericCellValue();
+                                    }
+                                }
+                            }
+                            dem = 0;
+
+                            if (r < 49) {
+                                Cell sumCell = destRow.getCell(16);
+                                if (sumCell == null) sumCell = destRow.createCell(16);
+                                sumCell.setCellValue(sum);
+                            }
+                        }
+
+                        // 🔸 Ghi mã đại lý (D2)
+                        String branchCode = "";
+                        Sheet danhMucSheet = summaryWb.getSheet("Danh mục");
+                        if (danhMucSheet != null) {
+                            for (int i = 1; i <= danhMucSheet.getLastRowNum(); i++) {
+                                Row row = danhMucSheet.getRow(i);
+                                if (row == null) continue;
+
+                                Cell nameCell = row.getCell(3);
+                                Cell codeCell = row.getCell(2);
+
+                                if (nameCell != null && codeCell != null) {
+                                    String name = nameCell.toString().trim();
+                                    if (name.equalsIgnoreCase(storeName)) {
+                                        branchCode = codeCell.toString().trim();
+                                        break;
+                                    }
                                 }
                             }
                         }
-                        dem = 0;
 
-                        if (r < 49) {
-                            Cell sumCell = destRow.getCell(16);
-                            if (sumCell == null) sumCell = destRow.createCell(16);
-                            sumCell.setCellValue(sum);
+                        if (branchCode.isEmpty()) {
+                            branchCode = storeName.replaceAll("[\\\\/:*?\"<>|]", "_");
                         }
-                    }
 
-                    // 🔸 Ghi mã đại lý (D2)
-                    String branchCode = "";
-                    Sheet danhMucSheet = summaryWb.getSheet("Danh mục");
-                    if (danhMucSheet != null) {
-                        for (int i = 1; i <= danhMucSheet.getLastRowNum(); i++) {
-                            Row row = danhMucSheet.getRow(i);
-                            if (row == null) continue;
+                        Row rowB2 = templateSheet.getRow(1);
+                        if (rowB2 == null) rowB2 = templateSheet.createRow(1);
+                        Cell cellB2 = rowB2.getCell(3);
+                        if (cellB2 == null) cellB2 = rowB2.createCell(3);
+                        cellB2.setCellValue(branchCode);
 
-                            Cell nameCell = row.getCell(3);
-                            Cell codeCell = row.getCell(2);
+                        // 🔸 Xuất file
+                        int year = today.getYear();
+                        String fileName = String.format("BCKQKD_%02dT%d_%s.xlsx", lastMonth1, year, branchCode);
+                        Path outputFile = outputDir.resolve(fileName);
 
-                            if (nameCell != null && codeCell != null) {
-                                String name = nameCell.toString().trim();
-                                if (name.equalsIgnoreCase(storeName)) {
-                                    branchCode = codeCell.toString().trim();
-                                    break;
-                                }
-                            }
+                        try (FileOutputStream fos = new FileOutputStream(outputFile.toFile())) {
+                            templateWb.write(fos);
                         }
+
+                        System.out.println("✅ Exported: " + outputFile);
                     }
-
-                    if (branchCode.isEmpty()) {
-                        branchCode = storeName.replaceAll("[\\\\/:*?\"<>|]", "_");
-                    }
-
-                    Row rowB2 = templateSheet.getRow(1);
-                    if (rowB2 == null) rowB2 = templateSheet.createRow(1);
-                    Cell cellB2 = rowB2.getCell(3);
-                    if (cellB2 == null) cellB2 = rowB2.createCell(3);
-                    cellB2.setCellValue(branchCode);
-
-                    // 🔸 Xuất file
-                    int year = today.getYear();
-                    String fileName = String.format("BCKQKD_%02dT%d_%s.xlsx", lastMonth1, year, branchCode);
-                    Path outputFile = outputDir.resolve(fileName);
-
-                    try (FileOutputStream fos = new FileOutputStream(outputFile.toFile())) {
-                        templateWb.write(fos);
-                    }
-
-                    System.out.println("✅ Exported: " + outputFile);
                 }
             }
         }
 
+        // 🔹 Xóa file tạm sau khi xong
         Files.deleteIfExists(tempFile);
     }
+
 
 
 
