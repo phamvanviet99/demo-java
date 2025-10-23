@@ -5,18 +5,25 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-@SpringBootApplication
-public class DemoApplication implements CommandLineRunner {
+import java.util.Collections;
 
-	@Value("${server.port}")
-	private String serverPort;
+@SpringBootApplication
+public class DemoApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(DemoApplication.class, args);
-	}
+		SpringApplication app = new SpringApplication(DemoApplication.class);
 
-	@Override
-	public void run(String... args) {
-		System.out.println("✅ Server started on port: " + serverPort);
+		// Nếu Railway có PORT, lấy ra và set lại cho Tomcat
+		String port = System.getenv("PORT");
+		if (port != null) {
+			app.setDefaultProperties(Collections.singletonMap("server.port", port));
+			System.out.println("✅ Running on Railway port: " + port);
+		} else {
+			app.setDefaultProperties(Collections.singletonMap("server.port", "8080"));
+			System.out.println("✅ Running on default port 8080");
+		}
+
+		app.run(args);
 	}
 }
+
