@@ -54,7 +54,8 @@ public class HomeController {
     public void processFileStream(@RequestParam("file") MultipartFile file, HttpServletResponse response) {
         Path outputDir = null;
         try {
-            outputDir = Files.createTempDirectory("task2-"); // short-lived temp
+            outputDir = Paths.get("/tmp/task2-" + System.currentTimeMillis());
+            Files.createDirectories(outputDir);
             generateReports(file, outputDir);
             final Path finalOutputDir = outputDir;
 
